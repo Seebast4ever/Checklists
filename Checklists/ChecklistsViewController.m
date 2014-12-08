@@ -7,6 +7,7 @@
 //
 
 #import "ChecklistsViewController.h"
+#import "ChecklistItem.h"
 
 @interface ChecklistsViewController ()
 
@@ -14,28 +15,60 @@
 
 @implementation ChecklistsViewController
 {
-    NSString *_row0text;
-    NSString *_row1text;
-    NSString *_row2text;
-    NSString *_row3text;
-    NSString *_row4text;
-    
-    BOOL _row0checked;
-    BOOL _row1checked;
-    BOOL _row2checked;
-    BOOL _row3checked;
-    BOOL _row4checked;
+    NSMutableArray *_items;
+}
+
+- (NSString *)documentsDirectory
+{
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documentsDirectory = [paths firstObject];
+    return documentsDirectory;
+}
+
+- (NSString *)dataFilePath
+{
+    return [[self documentsDirectory]
+            stringByAppendingPathComponent:@"Checklists.plist"];
+}
+
+- (void)saveChecklistItems
+{
+    NSMutableArray *data = [[NSMutableData alloc] init];
+    NSKeyedArchiver *archiver = [[NSKeyedArchiver alloc] initForWritingWithMutableData:data];
+    [archiver encodeObject:_items forKey:@"ChecklistItems"];
+    [archiver finishEncoding];
+    [data writeToFile:[self dataFilePath] atomically:YES];
+}
+
+- (void)loadChecklistItems
+{
+    NSString *path = [self dataFilePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:path])
+        {
+            NSData *data = [[NSData alloc] initWithContentsOfFile:path];
+            NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingWithData:data];
+            
+            _items = [unarchiver decodeObjectForKey:@"ChecklistItems"];
+            [unarchiver finishDecoding];
+        }
+    else
+    {
+        _items = [[NSMutableArray alloc] initWithCapacity:20];
+    }
+}
+
+- (id)initWithCoder:(NSCoder *)aDecoder
+{
+    if ((self = [super initWithCoder:aDecoder]))
+    {
+        [self loadChecklistItems];
+    }
+    return self;
 }
 
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-
-	_row0text = @"Walk the dog";
-    _row1text = @"Brush teeth";
-    _row2text = @"Learn iOS development";
-    _row3text = @"Soccer practice";
-    _row4text = @"Eat ice cream";
 }
 
 - (void)didReceiveMemoryWarning
@@ -43,74 +76,123 @@
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
 }
-- (NSInteger) tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
-    return 5;
+    return [_items count];
 }
 
--(UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+- (void)configureCheckmarkForCell:(UITableViewCell *)cell withChecklistItem:(ChecklistItem *)item
+{
+    UILabel *label = (UILabel *)[cell viewWithTag:1001];
+    if (item.checked)
+    {
+        label.text = @"√";
+    }
+    else
+    {
+        label.text = @"";
+    }
+}
+
+- (void)configureTextForCell:(UITableViewCell *)cell withChecklistItem:(ChecklistItem *)item
+{
+    UILabel *label = (UILabel *)[cell viewWithTag:1000];
+    label.text = item.text;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ChecklistItem"];
-    UILabel *label = (UILabel *)[cell viewWithTag:1000];
     
-    if (indexPath.row == 0)
-    {
-        label.text = _row0text;
-    }
-    else if (indexPath.row == 1)
-    {
-        label.text = _row1text;
-    }
-    else if (indexPath.row == 2)
-    {
-        label.text = _row2text;
-    }
-    else if (indexPath.row == 3)
-    {
-        label.text = _row3text;
-    }
-    else if (indexPath.row == 4)
-    {
-        label.text = _row4text;
-    }
+    ChecklistItem *item = _items[indexPath.row];
     
+    [self configureTextForCell:cell withChecklistItem:item];
+    [self configureCheckmarkForCell:cell withChecklistItem:item];
+	
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    UITableViewCell *cell = [tableView
-                             cellForRowAtIndexPath:indexPath];
-    BOOL isChecked = NO;
+    UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
     
-    if (indexPath.row == 0)
-    {
-        isChecked = _row0checked; _row0checked = !_row0checked;
-    }
-    else if (indexPath.row == 1)
-    {
-        isChecked = _row1checked; _row1checked = !_row1checked;
-    }
-    else if (indexPath.row == 2)
-    {
-        isChecked = _row2checked; _row2checked = !_row2checked;
-    }
-    else if (indexPath.row == 3)
-    {
-        isChecked = _row3checked; _row3checked = !_row3checked;
-    }
-    else if (indexPath.row == 4)
-    {
-        isChecked = _row4checked; _row4checked = !_row4checked;
-    }
-    if (isChecked)
-    {
-        cell.accessoryType = UITableViewCellAccessoryNone;
-    }
-    else
-    {
-        cell.accessoryType = UITableViewCellAccessoryCheckmark;
-    }
+    ChecklistItem *item = _items[indexPath.row];
+    [item toggleChecked];
+    
+    [self configureCheckmarkForCell:cell withChecklistItem:item];
+	
+    [self saveChecklistItems];
+    
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [_items removeObjectAtIndex:indexPath.row];
+    
+    [self saveChecklistItems];
+    
+    NSArray *indexPaths = @[indexPath];
+    [tableView deleteRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationAutomatic];
+}
+
+
+- (void)itemDetailViewControllerDidCancel:
+(itemDetailViewController *)controller
+{
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)itemDetailViewController: (itemDetailViewController *)controller didFinishAddingItem:(ChecklistItem *)item
+{
+    NSInteger newRowIndex = [_items count];
+    [_items addObject:item];
+    
+    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:newRowIndex inSection:0];
+    NSArray *indexPaths = @[indexPath];
+    [self.tableView insertRowsAtIndexPaths:indexPaths withRowAnimation:UITableViewRowAnimationAutomatic];
+    
+    [self saveChecklistItems];
+    
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)itemDetailViewController:(itemDetailViewController *)controller didFinishEditingItem:(ChecklistItem *)item
+{
+    NSInteger index = [_items indexOfObject:item];
+    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:index inSection:0];
+    
+    UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
+    [self configureTextForCell:cell withChecklistItem:item];
+    
+    [self saveChecklistItems];
+    
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender
+{
+    if ([segue.identifier isEqualToString:@"AddItem"])
+    {
+        // 1
+        UINavigationController *navigationController = segue.destinationViewController;
+        // 2
+        itemDetailViewController *controller = (itemDetailViewController *)
+        navigationController.topViewController; controller.delegate = self;
+    }
+    else if ([segue.identifier isEqualToString:@"EditItem"])
+    {
+        UINavigationController *navigationController = segue.destinationViewController;
+        
+        itemDetailViewController *controller = (itemDetailViewController *)navigationController.topViewController;
+        
+        controller.delegate = self;
+        
+        NSIndexPath *indexPath = [self.tableView indexPathForCell:sender];
+        
+        controller.itemToEdit = _items[indexPath.row];
+    }
+}
+
 @end
